@@ -1,0 +1,26 @@
+{
+    "name": "nodejs",
+    "version": "1.0.0",
+    "description": "The Stickfish chess bot in a Node.js package",
+    "main": "index.js",
+    "scripts": {
+      "test": ""
+    },
+    "keywords": [
+      "stickfish",
+      "stockfish",
+      "chess",
+      "chessbot",
+      "bot",
+      "home",
+      "index",
+      "play"
+    ],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+      "@types/node": "^18.0.6",
+      "express": "^4.18.2",
+      "node-fetch": "^3.3.1"
+    }
+  }

@@ -1,0 +1,84 @@
+html, body {
+    width: 100vw;
+    height: 100vh;
+    font-family: Arial, Helvetica, sans-serif;
+    padding:0;
+    margin: 0;
+    background-color: #aaa;
+    color:white;
+}
+* {
+  padding: 0;
+  margin: 0;
+}
+h1 {
+    text-align: center;
+}
+/* Style the table */
+.board {
+  width:600px;
+  height:600px;
+  margin:auto;
+  padding:0;
+}
+.tableoverlay {
+  height: 640px;
+  width: 640px;
+  margin: auto;
+  position: absolute;
+  background-color: rgb(20, 222, 151);
+}
+table {
+    border-collapse: collapse;
+    margin: auto;
+    cursor: pointer;
+    height:600px;
+    width:600px;
+}
+/* Style the cells */
+td, .hover-square {
+    width: 75px;
+    height: 75px;
+    display:inline-block;
+    box-sizing: border-box;
+  }
+  .hover-square {
+    position: absolute;
+    visibility: hidden;
+  }
+  /* Style the white cells */
+  .white {
+    background-color: rgb(157, 194, 226);
+  }
+  /* Style the black cells */
+  .black {
+    background-color: rgb(91, 135, 173);
+  }
+  .dragging.white {
+    background-color: rgb(157, 226, 189);
+  }
+  .dragging.black {
+    background-color: rgb(91, 173, 136);
+  }
+  img {
+    width: 86px;
+    height: 86px;
+    margin-left: -5.5px;
+    margin-top: -7.5px;
+    position: absolute;
+  }
+  #arrows {
+    width: 600px;
+    height: 600px;
+    /* background-color:black; */
+    z-index: 1;
+    position: absolute;
+    cursor:pointer;
+    pointer-events:none;
+  }
+  .highlight.white {
+    background-color: rgb(221, 103, 0) !important;
+  }
+  .highlight.black {
+    background-color: rgb(168, 83, 9) !important;
+  }
