@@ -7,6 +7,8 @@ var selectHighlightPiece;
 var activeArrows = [];
 var blackPieces = {};
 var whitePieces = {};
+var lmbmds; //left mouse button mouse down start
+var gameOver = false;
 
 String.prototype.toDegrees = function() {
 	return Number(this) * (180 / Math.PI);
@@ -20,8 +22,38 @@ Number.prototype.toDegrees = function() {
 Number.prototype.toRadians = function() {
 	return (this) * (Math.PI / 180);
 }
+var inCheckCallback = (str, pieceType, move, kingPos) => {
+	let movingIntoCheck = false;
+	if(!kingPos) {
+		let ourPieces = JSON.parse(JSON.stringify(isUpperCase(pieceType) ? whitePieces : blackPieces));
+		let ourKingType = isUpperCase(pieceType) ? 'K' : 'k'
+		for(var i of Object.keys(ourPieces)) if(i[0] == ourKingType) kingPos = ourPieces[i].location
+	}
+	let oppPieces = JSON.parse(JSON.stringify(isUpperCase(pieceType) ? blackPieces : whitePieces));
+	for(var i in oppPieces) {
+		//we make a deep copy of boardpositions so we can revert our ghost move
+		let bptemp = JSON.parse(JSON.stringify(boardpositions));
+		//we ghost-move our piece
+		removePiece(str, true)
+		addPiece(pieceType, projectMoveWithNP(str, move), getDOMElemFromSquare(str).dataset.piece, true)
+		if(oppPieces[i].location !== projectMoveWithNP(str, move) && oppPieces[i].location.legalMoves(true).includes(kingPos)) {
+			// console.log(projectMoveWithNP(str, move), 'this square is being covered')
+			if(oppPieces[i].type.toUpperCase() === 'P') {
+				//a pawn is protecting the square (probably)
+				let npc = getNPfromSquarePos(kingPos) - getNPfromSquarePos(oppPieces[i].location);
+				if(Math.abs(npc) != 16 && Math.abs(npc) != 8) movingIntoCheck = true;
+			} else {
+				movingIntoCheck = true;
+			}
+		}
+		//we revert our ghost move
+		boardpositions = bptemp;
+	}
+	return movingIntoCheck;
+}
 String.prototype.legalMoves = function(base = false) {
 	//base means it doesnt matter about moving into check/being pinned
+	if(gameOver) return;
 	let str = this.toString() //ex. e4, c6
 	let strFile = str[0]
 	let strRank = str[1]
@@ -34,10 +66,17 @@ String.prototype.legalMoves = function(base = false) {
 				//calculate if str -> projectMoveWithNP(str, move) is legal
 				//if its part of the base set of moves
 				if(projectMoveWithNP(str, move) === false) return;
+				if(Math.abs(files.indexOf(projectMoveWithNP(str, move)[0]) - files.indexOf(str[0])) === 7) return;
 				//if its not taking your own piece
-				if(isUpperCase(getPieceFromSquare(projectMoveWithNP(str, move))[0]) === isUpperCase(pieceType)) return;
+				if(getPieceFromSquare(projectMoveWithNP(str, move))[0] !== 'x' && !base) if(isUpperCase(getPieceFromSquare(projectMoveWithNP(str, move))[0]) === isUpperCase(pieceType)) return;
 				//if its not moving into check
+				let movingIntoCheck = false;
+				if(!base) {
+					movingIntoCheck = inCheckCallback(str, pieceType, move, projectMoveWithNP(str, move))
+				}
+				if(movingIntoCheck) return;
 				//if castle
+				// if(!base) getDOMElemFromSquare(projectMoveWithNP(str, move)).classList.add('highlight')
 				lglmoves.push(projectMoveWithNP(str, move))
 			})
 			break;
@@ -47,20 +86,39 @@ String.prototype.legalMoves = function(base = false) {
 				//calculate if str -> projectMoveWithNP(str, move) is legal
 				//if its part of the base set of moves
 				if(projectMoveWithNP(str, move) === false) return;
-				console.log(str, projectMoveWithNP(str, move))
 				if(Math.abs(files.indexOf(str[0]) - files.indexOf(projectMoveWithNP(str, move)[0])) !== Math.abs(ranks.indexOf(Number(str[1])) - ranks.indexOf(Number(projectMoveWithNP(str, move)[1])))) return;
 				//if its not taking your own piece
-				if(isUpperCase(getPieceFromSquare(projectMoveWithNP(str, move))[0]) === isUpperCase(pieceType)) return;
-				getDOMElemFromSquare(projectMoveWithNP(str, move)).classList.add('highlight');
+				if(getPieceFromSquare(projectMoveWithNP(str, move))[0] !== 'x' && !base) {
+					if(isUpperCase(getPieceFromSquare(projectMoveWithNP(str, move))[0]) === isUpperCase(pieceType)) return;
+				}
+				//if not going through a piece
+				let diag = move % 9 > 0 || move % 9 < 0 ? 7 : 9
+				for(var i = Math.abs(move) - diag; i > 0; i -= diag) {
+					let j = move < 0 ? i * -1 : i;
+					if(getPieceFromSquare(projectMoveWithNP(str, j))[0] !== 'x') return;
+				}
+				//if not allowing your king to get captured
+				let movingIntoCheck = false;
+				if(!base) movingIntoCheck = inCheckCallback(str, pieceType, move)
+				if(movingIntoCheck) return;
+				// getDOMElemFromSquare(projectMoveWithNP(str, move)).classList.add('highlight');
 				lglmoves.push(projectMoveWithNP(str, move))
 			})
 			break;
 		case "n":
 			//knight
-			[-9, -8, -7, -1, 1, 7, 8, 9].forEach(move => {
+			[-17, -15, -10, -6, 10, 6, 17, 15].forEach(move => {
 				//calculate if str -> projectMoveWithNP(str, move) is legal
+				//if part of base moves
 				if(projectMoveWithNP(str, move) === false) return;
-				if(isUpperCase(getPieceFromSquare(projectMoveWithNP(str, move))[0]) === isUpperCase(pieceType)) return;
+				if(Math.abs(files.indexOf(str[0]) - files.indexOf(projectMoveWithNP(str, move)[0])) > 2) return;
+				//if not taking your own piece
+				if(getPieceFromSquare(projectMoveWithNP(str, move))[0] !== 'x' && !base) if(isUpperCase(getPieceFromSquare(projectMoveWithNP(str, move))[0]) === isUpperCase(pieceType)) return;
+				//if not allowing your king to get captured
+				let movingIntoCheck = false;
+				if(!base) movingIntoCheck = inCheckCallback(str, pieceType, move)
+				if(movingIntoCheck) return;
+				// getDOMElemFromSquare(projectMoveWithNP(str, move)).classList.add('highlight');
 				lglmoves.push(projectMoveWithNP(str, move))
 			})
 			break;
@@ -68,11 +126,21 @@ String.prototype.legalMoves = function(base = false) {
 			//rook
 			[-7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 7, -8, -16, -24, -32, -40, -48, -56, 56, 48, 40, 32, 24, 16, 8].forEach(move => {
 				//calculate if str -> projectMoveWithNP(str, move) is legal
+				let verticalorhorizontal = Math.abs(move) < 8 ? 1 : 8
 				if(projectMoveWithNP(str, move) === false) return;
 				if(str[0] !== projectMoveWithNP(str, move)[0] && str[1] !== projectMoveWithNP(str, move)[1]) return;
 				//if its not taking your own piece
-				if(isUpperCase(getPieceFromSquare(projectMoveWithNP(str, move))[0]) === isUpperCase(pieceType)) return;
-				getDOMElemFromSquare(projectMoveWithNP(str, move)).classList.add('highlight');
+				if(getPieceFromSquare(projectMoveWithNP(str, move))[0] !== 'x' && !base) if(isUpperCase(getPieceFromSquare(projectMoveWithNP(str, move))[0]) === isUpperCase(pieceType)) return;
+				//if its not going through a piece
+				for(var i = Math.abs(move) - verticalorhorizontal; i > 0; i -= verticalorhorizontal) {
+					let j = move < 0 ? i * -1 : i;
+					if(getPieceFromSquare(projectMoveWithNP(str, j))[0] !== 'x') return;
+				}
+				//if not allowing your king to get captured
+				let movingIntoCheck = false;
+				if(!base) movingIntoCheck = inCheckCallback(str, pieceType, move)
+				if(movingIntoCheck) return;
+				// getDOMElemFromSquare(projectMoveWithNP(str, move)).classList.add('highlight');
 				lglmoves.push(projectMoveWithNP(str, move))
 			})
 			break;
@@ -81,13 +149,39 @@ String.prototype.legalMoves = function(base = false) {
 			[-63, -54, -45, -36, -27, -18, -9, 9, 18, 27, 36, 45, 54, 63, -49, -42, -35, -28, -21, -14, -7, 7, 14, 21, 28, 35, 42, 49, -7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 7, -8, -16, -24, -32, -40, -48, -56, 56, 48, 40, 32, 24, 16, 8].forEach(move => {
 				//calculate if str -> projectMoveWithNP(str, move) is legal
 				//if its part of the base set of moves
+				let diagOrVertHorz; //determines if the queen move is diagonal or vertical/horizontal
 				if(projectMoveWithNP(str, move) === false) return;
 				if(Math.abs(files.indexOf(str[0]) - files.indexOf(projectMoveWithNP(str, move)[0])) !== Math.abs(ranks.indexOf(Number(str[1])) - ranks.indexOf(Number(projectMoveWithNP(str, move)[1])))) {
 					if(str[0] !== projectMoveWithNP(str, move)[0] && str[1] !== projectMoveWithNP(str, move)[1]) return;
+					//vert/horz move
+					diagOrVertHorz = 'vh'
+				} else {
+					//diag move
+					diagOrVertHorz = 'd'
 				}
 				//ifs its not taking your own piece
-				getDOMElemFromSquare(projectMoveWithNP(str, move)).classList.add('highlight')
-				if(isUpperCase(getPieceFromSquare(projectMoveWithNP(str, move))[0]) === isUpperCase(pieceType)) return;
+				if(getPieceFromSquare(projectMoveWithNP(str, move))[0] !== 'x' && !base) if(isUpperCase(getPieceFromSquare(projectMoveWithNP(str, move))[0]) === isUpperCase(pieceType)) return;
+				//if its not going through a piece
+				if(diagOrVertHorz == 'vh') {
+					//vert or horz
+					let verticalorhorizontal = Math.abs(move) < 8 ? 1 : 8;
+					for(var i = Math.abs(move) - verticalorhorizontal; i > 0; i -= verticalorhorizontal) {
+						let j = move < 0 ? i * -1 : i;
+						if(getPieceFromSquare(projectMoveWithNP(str, j))[0] !== 'x') return;
+					}
+				} else if(diagOrVertHorz == 'd') {
+					//diag
+					let diag = move % 9 > 0 || move % 9 < 0 ? 7 : 9;
+					for(var i = Math.abs(move) - diag; i > 0; i -= diag) {
+						let j = move < 0 ? i * -1 : i;
+						if(getPieceFromSquare(projectMoveWithNP(str, j))[0] !== 'x') return;
+					}
+				}
+				//if its not blocking check
+				let movingIntoCheck = false;
+				if(!base) movingIntoCheck = inCheckCallback(str, pieceType, move)
+				if(movingIntoCheck) return;
+				// if(!base) getDOMElemFromSquare(projectMoveWithNP(str, move)).classList.add('highlight')
 				lglmoves.push(projectMoveWithNP(str, move))
 			})
 			break;
@@ -99,10 +193,12 @@ String.prototype.legalMoves = function(base = false) {
 				if(projectMoveWithNP(str, move) === false) return;
 				if((pieceType === "P" && (move.toString())[0] !== '-') || (pieceType === "p" && (move.toString())[0] === '-')) return;
 				//if capture available
-				if(Math.abs(move) == 7 || Math.abs(move) == 9) {
-					if(getPieceFromSquare(projectMoveWithNP(str, move))[0] == 'x') return;
-				} else {
-					if(getPieceFromSquare(projectMoveWithNP(str, move))[0] != 'x') return;
+				if(!base) {
+					if(Math.abs(move) == 7 || Math.abs(move) == 9) {
+						if(getPieceFromSquare(projectMoveWithNP(str, move))[0] == 'x') return;
+					} else {
+						if(getPieceFromSquare(projectMoveWithNP(str, move))[0] != 'x') return;
+					}
 				}
 				//if you can move double the amount
 				if(Math.abs(move) == 16) {
@@ -115,8 +211,14 @@ String.prototype.legalMoves = function(base = false) {
 					}
 				}
 				//if its not taking your own piece
-				if(isUpperCase(getPieceFromSquare(projectMoveWithNP(str, move))[0]) === isUpperCase(pieceType)) return;
-				getDOMElemFromSquare(projectMoveWithNP(str, move)).classList.add('highlight')
+				if(getPieceFromSquare(projectMoveWithNP(str, move))[0] !== 'x' && !base) {
+					if(isUpperCase(getPieceFromSquare(projectMoveWithNP(str, move))[0]) === isUpperCase(pieceType)) return;
+				}
+				//if not allowing your king to get captured
+				let movingIntoCheck = false;
+				if(!base) movingIntoCheck = inCheckCallback(str, pieceType, move)
+				if(movingIntoCheck) return;
+				// getDOMElemFromSquare(projectMoveWithNP(str, move)).classList.add('highlight')
 				lglmoves.push(projectMoveWithNP(str, move))
 			})
 			break;
@@ -339,6 +441,7 @@ document.getElementById('hover-square').addEventListener('drop', e=>{
 	movedHighlightPieces = [id, sqr.classList[1]]
 	selectHighlightPiece = undefined;
 	movePiece([getPieceFromSquare(id)[0], id, sqr.classList[1]])
+	doRandomMove()
 	e.dataTransfer.clearData('text/plain')
 })
 
@@ -360,47 +463,49 @@ var board = document.getElementsByClassName("board")[0], move = 0,boardtable = d
 	'r': ["Rook", "r", "rook.png", 5],
 	'q': ["Queen", "q", "queen.png", 9],
 }, boardpositions = [
-	['r','n','b','q','k','b','n','r'],
-	['p','p','p','p','p','p','p','p'],
+	// ['r','n','b','q','k','b','n','r'],
+	// ['p','p','p','p','p','p','p','p'],
+	// ['x','x','x','x','x','x','x','x'],
+	// ['x','x','x','x','x','x','x','x'],
+	// ['x','x','x','x','x','x','x','x'],
+	// ['x','x','x','x','x','x','x','x'],
+	// ['P','P','P','P','P','P','P','P'],
+	// ['R','N','B','Q','K','B','N','R'],
+	['x','x','x','x','x','x','x','x'],
+	['x','x','x','x','x','x','P','x'],
 	['x','x','x','x','x','x','x','x'],
 	['x','x','x','x','x','x','x','x'],
 	['x','x','x','x','x','x','x','x'],
 	['x','x','x','x','x','x','x','x'],
-	['P','P','P','P','P','P','P','P'],
-	['R','N','B','Q','K','B','N','R'],
-	// ['x','x','x','x','x','x','x','x'],
-	// ['x','x','x','x','x','p','x','x'],
-	// ['x','x','x','x','x','x','x','x'],
-	// ['x','x','K','x','P','x','x','q'],
-	// ['x','x','x','x','x','x','x','k'],
-	// ['x','x','x','x','x','x','x','x'],
-	// ['x','x','x','x','x','x','x','x'],
-	// ['x','x','x','x','x','x','x','x'],
+	['x','p','x','x','x','x','x','x'],
+	['x','x','x','x','x','x','x','x'],
 ], pieceClasses = [], turn = 0, files = ['a','b','c','d','e','f','g','h'], ranks = [8,7,6,5,4,3,2,1], drawboard = function() {
 	for(var i in boardpositions) {
 		let bi = boardpositions[i];
 		for(var j in bi) {
-			let bj = bi[j]; //we are looping through every square on the board
-			let tempfileletter = files[j];
-			let tempranknumber = ranks[i];
-			let sqrPos = tempfileletter + tempranknumber;
-			//if we were looking at square e4, tempfileletter would be e and tempranknumber would be 4.
-			//now that we know what square position it is, what is the array position of the square?
-			if(isUpperCase(getPieceFromSquare(sqrPos)[0])) {
-				whitePieces[getPieceFromSquare(sqrPos)[0] + sqrPos] = {
-					type: getPieceFromSquare(sqrPos)[0],
-					team: 'w',
-					location: sqrPos
+			[1].forEach(() => {
+				let bj = bi[j]; //we are looping through every square on the board
+				let tempfileletter = files[j];
+				let tempranknumber = ranks[i];
+				let sqrPos = tempfileletter + tempranknumber;
+				//if we were looking at square e4, tempfileletter would be e and tempranknumber would be 4.
+				//now that we know what square position it is, what is the array position of the square?
+				if(isUpperCase(getPieceFromSquare(sqrPos)[0])) {
+					whitePieces[getPieceFromSquare(sqrPos)[0] + sqrPos] = {
+						type: getPieceFromSquare(sqrPos)[0],
+						team: 'w',
+						location: sqrPos
+					}
+				} else {
+					if(getPieceFromSquare(sqrPos)[0] == 'x') return;
+					blackPieces[getPieceFromSquare(sqrPos)[0] + sqrPos] = {
+						type: getPieceFromSquare(sqrPos)[0],
+						team: 'b',
+						location: sqrPos
+					}
 				}
-			} else {
-				if(getPieceFromSquare(sqrPos)[0] == 'x') break;
-				blackPieces[getPieceFromSquare(sqrPos)[0] + sqrPos] = {
-					type: getPieceFromSquare(sqrPos)[0],
-					team: 'b',
-					location: sqrPos
-				}
-			}
-			addPiece(getPieceFromSquare(sqrPos)[0], sqrPos, getPieceFromSquare(sqrPos)[0] + sqrPos)
+				addPiece(getPieceFromSquare(sqrPos)[0], sqrPos, getPieceFromSquare(sqrPos)[0] + sqrPos)
+			})
 		}
 	}
 }, init = function() {
@@ -447,6 +552,7 @@ var board = document.getElementsByClassName("board")[0], move = 0,boardtable = d
 			movedHighlightPieces = [id, sqr.classList[1]]
 			selectHighlightPiece = undefined;
 			e.dataTransfer.clearData('text/plain')
+			doRandomMove();
 		})
 	})
 }, getPieceFromSquare = function(sqr) {
@@ -475,23 +581,38 @@ var board = document.getElementsByClassName("board")[0], move = 0,boardtable = d
 	return Number(document.getElementsByClassName(sqr)[0].classList[2].slice(2));
 }, getSquarePosfromNP = function(np) { //vice versa
 	return document.getElementsByClassName(np)[0].classList[1];
-}, addPiece = function(ptype, sqr, dataPiece) {
+}, legalMoves = function(team) {
+	let legalMoves = [];
+	let ourPieces = JSON.parse(JSON.stringify(team == 'white' ? whitePieces : blackPieces));
+	for(var i in ourPieces) {
+		console.log(i)
+		legalMoves = legalMoves.concat(ourPieces[i].location.legalMoves().map(move => [ourPieces[i].type, ourPieces[i].location, move]))
+	}
+	return legalMoves;
+}, doRandomMove = function() {
+	let team = [...('' + move)].includes('.') ? 'black' : 'white'
+	let teamLegalMoves = legalMoves(team);
+	let rand = Math.round(Math.random() * (teamLegalMoves.length - 1))
+	if(teamLegalMoves.length > 0) movePiece(teamLegalMoves[rand])
+}, addPiece = function(ptype, sqr, dataPiece, ghost = false) {
 	//ptype would be the piece type (k for king, n for knight, q for queen, etc.), sqr would be e4 or c6. pteam is either 0 or 1 depending on if the piece is white or black. white is 0, black is 1
 	//////////////////////////////////////////////////////////now replace the piece in the array
-	if(getDOMElemFromSquare(sqr).children[0] !== undefined) {
+	if(getDOMElemFromSquare(sqr).children[0] !== undefined && !ghost) {
 		//we're capturing a piece
 		//the piece we're capturing is getDOMElemFromSquare(sqr).children[0]
 		//the piece type is getPieceFromSquare(sqr)[0]
 		if(getPieceFromSquare(sqr)[0] === "k") {
 			alert("White Wins!")
+			gameOver = true;
 		} else if(getPieceFromSquare(sqr)[0] === "K") {
 			alert("Black Wins!")
+			gameOver = true;
 		} else {
 			if(isUpperCase(getPieceFromSquare(sqr)[0])) {
 				//white loses material
 				materialCount -= pieces[getPieceFromSquare(sqr)[0].toLowerCase()][3]
 				delete whitePieces[getDOMElemFromSquare(sqr).children[0].dataset.piece];
-			} else {
+			} else if(getPieceFromSquare(sqr)[0] !== 'x') {
 				//black loses material
 				materialCount += pieces[getPieceFromSquare(sqr)[0].toLowerCase()][3]
 				delete blackPieces[getDOMElemFromSquare(sqr).children[0].dataset.piece];
@@ -512,6 +633,7 @@ var board = document.getElementsByClassName("board")[0], move = 0,boardtable = d
 	}
 	boardpositions[getPieceFromSquare(sqr)[1]][getPieceFromSquare(sqr)[2]] = pletter;
 	//////////////////////////////////////////////////////////now replace the piece in the actual DOM
+	if(ghost) return;
 	let pimg = document.createElement("img"); //actual image that will show up on browser
 	getDOMElemFromSquare(sqr).replaceChildren();
 	pimg.src = pteam == 0 ? `w${pieces[ptype.toLowerCase()][2]}` : `b${pieces[ptype.toLowerCase()][2]}`;
@@ -521,8 +643,9 @@ var board = document.getElementsByClassName("board")[0], move = 0,boardtable = d
 	pimg.setAttribute('data-piece', dataPiece)
 	pimg.addEventListener('dragstart', e=>{dragstartev(e,pimg)})
 	getDOMElemFromSquare(sqr).appendChild(pimg);
-}, removePiece = function(sqr) {
+}, removePiece = function(sqr, ghost = false) {
 	boardpositions[getPieceFromSquare(sqr)[1]][getPieceFromSquare(sqr)[2]] = "x";
+	if(ghost) return;
 	getDOMElemFromSquare(sqr).replaceChildren();
 }, movePiece = function(input) {
 	let output = [] //ex. ['P', e2, e4]
@@ -568,12 +691,16 @@ var board = document.getElementsByClassName("board")[0], move = 0,boardtable = d
 	//P, e2, e4 means that P is ptype, e2 is pos1, e4 is pos2
 	/////////////////////////////////////////we need to work on this :(
 	//if promotion
+	console.log(output)
 	if(output[0].toUpperCase() == 'P') {
 		if((output[1][1] == '2' && output[0] === 'p') || (output[1][1] == '7' && output[0] === 'P')) {
+			let team = output[0] === 'P' ? 'white' : 'black'
+			console.log(whitePieces, getDOMElemFromSquare(output[1]), whitePieces[getDOMElemFromSquare(output[1]).children[0].dataset.piece])
+			if(team == 'white') whitePieces[getDOMElemFromSquare(output[1]).children[0].dataset.piece].type = 'Q'
+			else blackPieces[getDOMElemFromSquare(output[1]).children[0].dataset.piece].type = 'q'
 			output[0] = isUpperCase(output[0]) ? 'Q' : 'q'
 		}
 	}
-	console.log(getDOMElemFromSquare(output[1]).children[0].dataset.piece)
 	if(isUpperCase(output[0])) {
 		//whites move
 		whitePieces[getDOMElemFromSquare(output[1]).children[0].dataset.piece].location = output[2]
@@ -604,6 +731,7 @@ var board = document.getElementsByClassName("board")[0], move = 0,boardtable = d
 	return projectionSquare;
 }
 init();
+// setInterval(() => {doRandomMove()}, 1)
 //initialization
 /*
 HOW TO MAKE THE PIECES MOVE
